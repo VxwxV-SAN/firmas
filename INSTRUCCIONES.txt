@@ -1,0 +1,43 @@
+Firmas PDF
+==========
+
+Aplicación de escritorio para leer PDF, dibujar firmas, colocarlas sobre
+las páginas y guardar una copia firmada (visual o digitalmente).
+
+Uso rápido
+----------
+
+1. Haga doble clic en FirmasPDF.exe.
+2. Pulse "Abrir PDF" o arrastre un PDF a la ventana.
+3. Cree o importe firmas desde el panel "Mis firmas".
+4. Coloque las firmas sobre las páginas del PDF.
+5. Pulse "Guardar copia" (firmas visuales) o "Firmar digitalmente".
+
+Atajos: Ctrl+O abrir PDF, Ctrl+S guardar copia, Ctrl+Shift+S firma digital,
+Ctrl+Z / Ctrl+Y deshacer / rehacer, Supr quitar firma seleccionada.
+
+Dónde se guardan sus datos
+--------------------------
+
+Toda la información de la aplicación (biblioteca de firmas, metadatos)
+se guarda en la carpeta "data" que está junto a FirmasPDF.exe:
+
+    .\FirmasPDF.exe
+    .\data\Signatures\      <- aquí se guardan sus firmas
+
+Para respaldar o mover la aplicación, copie toda la carpeta, incluido
+el directorio "data". Para empezar desde cero, borre "data\Signatures".
+
+Ubicación alternativa
+---------------------
+
+Si quiere que los datos se guarden en otra ruta (por ejemplo, en una
+memoria USB), cree la variable de entorno FIRMAS_PDF_DATA con la ruta
+completa antes de iniciar la aplicación.
+
+Para abrir un PDF desde la línea de comandos:
+
+    FirmasPDF.exe "C:\Documentos\contrato.pdf"
+
+Requisitos: Windows 10 de 64 bits (22H2) o Windows 11. No necesita
+instalar .NET, todo viene incluido en este ejecutable.
