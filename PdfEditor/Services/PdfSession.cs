@@ -22,6 +22,7 @@ public sealed class PdfSession : IDisposable
     public IReadOnlyList<PdfPageInfo> Pages { get; }
     public bool CanExport { get; }
     public string RestrictionMessage { get; }
+    public PdfContentIndex ContentIndex { get; }
 
     private PdfSession(string path, byte[] bytes, string password, WinPdfDocument document,
         MemoryStream memory, IRandomAccessStream input)
@@ -41,6 +42,7 @@ public sealed class PdfSession : IDisposable
         if (pages.Count == 0) throw new InvalidOperationException("El PDF no contiene páginas.");
         Pages = pages;
         (CanExport, RestrictionMessage) = Inspect(bytes, password);
+        ContentIndex = PdfContentIndex.Build(bytes, string.IsNullOrEmpty(password) ? null : password);
     }
 
     public static async Task<PdfSession> OpenAsync(string path, string password = "")

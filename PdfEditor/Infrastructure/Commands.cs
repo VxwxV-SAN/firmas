@@ -13,6 +13,41 @@ public sealed class RelayCommand(Action execute, Func<bool>? canExecute = null) 
     }
 }
 
+public sealed class RelayCommand<T>(Action<T> execute, Func<T, bool>? canExecute = null) : ICommand
+{
+    public bool CanExecute(object? parameter)
+    {
+        if (parameter is T value) return canExecute?.Invoke(value) ?? true;
+        if (parameter is null && default(T) is null) return canExecute?.Invoke(default!) ?? true;
+        // Allow enum/int conversion from CommandParameter strings/boxed values
+        try
+        {
+            if (parameter == null) return false;
+            var converted = (T)Convert.ChangeType(parameter, typeof(T));
+            return canExecute?.Invoke(converted) ?? true;
+        }
+        catch { return false; }
+    }
+
+    public void Execute(object? parameter)
+    {
+        if (parameter is T value) { execute(value); return; }
+        if (typeof(T).IsEnum && parameter != null)
+        {
+            execute((T)Enum.Parse(typeof(T), parameter.ToString()!, ignoreCase: true));
+            return;
+        }
+        if (parameter != null)
+            execute((T)Convert.ChangeType(parameter, typeof(T)));
+    }
+
+    public event EventHandler? CanExecuteChanged
+    {
+        add => CommandManager.RequerySuggested += value;
+        remove => CommandManager.RequerySuggested -= value;
+    }
+}
+
 public sealed class AsyncRelayCommand(Func<Task> execute, Action<Exception> onError,
     Func<bool>? canExecute = null) : ICommand
 {

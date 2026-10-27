@@ -67,6 +67,9 @@ internal static class Program
         store.Rename(asset, "Firma renombrada");
         Assert(store.Load().Single().Name == "Firma renombrada", "Renombrado persistente");
         TestDrawingAndImport();
+        TestEditObjectSnapshot();
+        TestContentIndexAndTextExport();
+        TestLegacyMigration();
 
         var original = Path.Combine(Output, "original.pdf");
         CreateFixture(original);
@@ -259,6 +262,81 @@ internal static class Program
         Assert(cleaned.PixelWidth == 56 && cleaned.PixelHeight == 36, "La importación elimina el blanco y recorta márgenes");
         cleaned.CopyPixels(new Int32Rect(0, 0, 1, 1), pixel, 4, 0);
         Assert(pixel[3] == 0, "El fondo blanco importado se vuelve transparente");
+    }
+
+    private static void TestEditObjectSnapshot()
+    {
+        var edit = new PageEditObject(
+            Guid.NewGuid(), EditObjectKind.NewText, 0, 800, 1000,
+            new Rect(0.1, 0.2, 0.4, 0.05),
+            text: "Hola", fontSizeDip: 18, colorArgb: 0xFF111111,
+            textMode: TextEditMode.Tap);
+        var restored = edit.Snapshot().ToObject();
+        Assert(restored.Text == "Hola" && restored.Kind == EditObjectKind.NewText && !restored.IsDeleted,
+            "Snapshot de objeto de edición");
+    }
+
+    private static void TestContentIndexAndTextExport()
+    {
+        var textPdf = Path.Combine(Output, "editable_text.pdf");
+        CreateSimpleTextPdf(textPdf, "Texto editable de prueba");
+        var index = PdfContentIndex.Build(File.ReadAllBytes(textPdf), null);
+        var hits = index.GetText(0);
+        Assert(hits.Count >= 1 && hits.Any(h => h.Text.Contains("Texto editable", StringComparison.Ordinal)),
+            "Indexación de texto con PdfPig");
+
+        using var session = PdfSession.OpenAsync(textPdf).GetAwaiter().GetResult();
+        var edit = new EditObjectState(Guid.NewGuid(), EditObjectKind.NewText, 0,
+            session.Pages[0].WidthDip, session.Pages[0].HeightDip, new Rect(0.1, 0.7, 0.5, 0.08),
+            "Inserción", 18, 0xFF111111, TextEditMode.Tap, null, null, false, null,
+            "Inserción", new Rect(0.1, 0.7, 0.5, 0.08));
+        var exported = Path.Combine(Output, "texto_nuevo.pdf");
+        var result = new PdfExporter().ExportAsync(session, [edit], [], exported).GetAwaiter().GetResult();
+        Assert(!result.UsedTapFallback, "Exportar texto nuevo sin fallback");
+        var exportedIndex = PdfContentIndex.Build(File.ReadAllBytes(exported), null);
+        Assert(exportedIndex.GetText(0).Any(h => h.Text.Contains("Inserción", StringComparison.Ordinal)),
+            "Exportar texto nuevo");
+    }
+
+    private static void TestLegacyMigration()
+    {
+        var root = Path.Combine(Output, "migrate-" + Guid.NewGuid().ToString("N"));
+        var legacy = Path.Combine(root, "legacy");
+        var emptyTarget = Path.Combine(root, "empty");
+        var filledTarget = Path.Combine(root, "filled");
+        var custom = Path.Combine(root, "custom");
+        Directory.CreateDirectory(legacy);
+        Directory.CreateDirectory(filledTarget);
+        File.WriteAllText(Path.Combine(legacy, "a.json"), "{}");
+        File.WriteAllBytes(Path.Combine(legacy, "a.png"), [1, 2, 3]);
+        File.WriteAllText(Path.Combine(filledTarget, "keep.json"), "{}");
+        SignatureStore.TryMigrate(legacy, emptyTarget);
+        Assert(File.Exists(Path.Combine(emptyTarget, "a.json")) && File.Exists(Path.Combine(emptyTarget, "a.png")),
+            "Migración copia firmas a carpeta vacía");
+        SignatureStore.TryMigrate(legacy, filledTarget);
+        Assert(!File.Exists(Path.Combine(filledTarget, "a.json")), "Migración omite destino no vacío");
+        var threw = false;
+        try { SignatureStore.TryMigrate(Path.Combine(root, "missing"), Path.Combine(root, "noop")); }
+        catch { threw = true; }
+        Assert(!threw, "Migración sin legacy no falla");
+        var customStore = new SignatureStore(custom);
+        customStore.Add("Local", SignatureKind.Imported, TestImage());
+        Assert(customStore.Load().Count == 1, "Ruta custom no migra desde AppData FirmasPDF");
+    }
+
+    private static void CreateSimpleTextPdf(string path, string text)
+    {
+        using var document = new PdfDocument();
+        var page = document.AddPage();
+        page.Width = XUnit.FromMillimeter(210);
+        page.Height = XUnit.FromMillimeter(297);
+        using (var gfx = XGraphics.FromPdfPage(page))
+        {
+            var font = new XFont("Arial", 16);
+            gfx.DrawString(text, font, XBrushes.Black, new XRect(40, 80, page.Width.Point - 80, 40),
+                XStringFormats.TopLeft);
+        }
+        document.Save(path);
     }
 
     private static async Task CheckWindowsCertificate(string pfxPath, string password, PdfExporter exporter, PdfSession source)

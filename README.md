@@ -1,6 +1,6 @@
 # PDF Editor
 
-Aplicación de escritorio en **C# / WPF / .NET 10** con tema oscuro e interfaz en español. Permite leer documentos PDF, dibujar o importar firmas, colocarlas sobre las páginas y guardar una copia con firmas visuales o con firma digital mediante certificado.
+Aplicación de escritorio en **C# / WPF / .NET 10** con tema oscuro e interfaz en español. Permite editar texto e imágenes de documentos PDF, dibujar o importar firmas, colocarlas sobre las páginas y guardar una copia con firmas visuales o con firma digital mediante certificado.
 
 ## Abrir la aplicación
 

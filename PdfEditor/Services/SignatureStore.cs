@@ -20,7 +20,7 @@ public sealed class SignatureStore
             TryMigrateFromLegacy();
     }
 
-    internal static void TryMigrate(string legacyFolder, string targetFolder)
+    public static void TryMigrate(string legacyFolder, string targetFolder)
     {
         if (!Directory.Exists(legacyFolder)) return;
         if (Directory.Exists(targetFolder) && Directory.EnumerateFileSystemEntries(targetFolder).Any())

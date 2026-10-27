@@ -17,20 +17,23 @@ public sealed class MainViewModel : ObservableObject, IDisposable
     private readonly IDialogService _dialogs;
     private readonly SignatureStore _store;
     private readonly PdfExporter _exporter = new();
-    private readonly List<PlacementState[]> _undo = [];
-    private readonly List<PlacementState[]> _redo = [];
-    private PlacementState[]? _beforeEdit;
+    private readonly List<DocumentEditSnapshot> _undo = [];
+    private readonly List<DocumentEditSnapshot> _redo = [];
+    private DocumentEditSnapshot? _beforeEdit;
     private PdfSession? _session;
     private int _pageIndex;
     private BitmapSource? _pageBitmap;
     private SignatureAsset? _selectedAsset;
     private SignaturePlacement? _selectedPlacement;
+    private PageEditObject? _selectedEditObject;
     private bool _isBusy;
     private bool _hasUnsavedChanges;
     private double _zoom = 1;
-    private string _status = "Abre un PDF para empezar. Tus firmas se guardan en este equipo.";
+    private string _status = "Abre un PDF para empezar. Puedes editar texto e imágenes y firmar.";
     private string _savedState = "";
     private string? _lastExportPath;
+    private EditorTool _selectedTool = EditorTool.Select;
+    private int _leftTab;
 
     public MainViewModel(IDialogService dialogs, SignatureStore? store = null)
     {
@@ -49,11 +52,9 @@ public sealed class MainViewModel : ObservableObject, IDisposable
             () => !IsBusy && HasDocument && _pageIndex > 0);
         NextPageCommand = new AsyncRelayCommand(() => ShowPageAsync(_pageIndex + 1), HandleError,
             () => !IsBusy && HasDocument && _pageIndex < PageCount - 1);
-        SaveCopyCommand = new AsyncRelayCommand(() => SaveAsync(false), HandleError,
-            () => CanEdit && Placements.Count > 0);
+        SaveCopyCommand = new AsyncRelayCommand(() => SaveAsync(false), HandleError, () => CanSave);
         SignDigitallyCommand = new AsyncRelayCommand(() => SaveAsync(true), HandleError, () => CanEdit);
-        RemovePlacementCommand = new RelayCommand(RemoveSelectedPlacement,
-            () => CanEdit && SelectedPlacement != null);
+        RemovePlacementCommand = new RelayCommand(RemoveSelected, () => CanEdit && HasSelection);
         DuplicatePlacementCommand = new RelayCommand(DuplicateSelectedPlacement,
             () => CanEdit && SelectedPlacement != null);
         UndoCommand = new RelayCommand(Undo, () => CanEdit && _undo.Count > 0);
@@ -62,11 +63,19 @@ public sealed class MainViewModel : ObservableObject, IDisposable
         ZoomOutCommand = new RelayCommand(() => Zoom /= 1.15, () => HasDocument && Zoom > .35);
         OpenExportCommand = new RelayCommand(() => TryAction(() => Process.Start(new ProcessStartInfo(
             LastExportPath!) { UseShellExecute = true })), () => LastExportPath != null && !IsBusy);
+        SetToolCommand = new RelayCommand<EditorTool>(tool => SelectedTool = tool);
+        SetLeftTabCommand = new RelayCommand<int>(tab => LeftTab = tab);
+        ReplaceSelectedImageCommand = new RelayCommand(() => TryAction(ReplaceSelectedImage),
+            () => CanEdit && SelectedEditObject?.IsImageKind == true);
+        DeleteSelectedEditCommand = new RelayCommand(DeleteSelectedEdit,
+            () => CanEdit && SelectedEditObject != null);
     }
 
     public ObservableCollection<SignatureAsset> Signatures { get; } = [];
     public ObservableCollection<SignaturePlacement> Placements { get; } = [];
     public ObservableCollection<SignaturePlacement> VisiblePlacements { get; } = [];
+    public ObservableCollection<PageEditObject> EditObjects { get; } = [];
+    public ObservableCollection<PageEditObject> VisibleEditObjects { get; } = [];
     public ICommand OpenPdfCommand { get; }
     public ICommand DrawSignatureCommand { get; }
     public ICommand ImportSignatureCommand { get; }
@@ -84,21 +93,47 @@ public sealed class MainViewModel : ObservableObject, IDisposable
     public ICommand ZoomInCommand { get; }
     public ICommand ZoomOutCommand { get; }
     public ICommand OpenExportCommand { get; }
+    public ICommand SetToolCommand { get; }
+    public ICommand SetLeftTabCommand { get; }
+    public ICommand ReplaceSelectedImageCommand { get; }
+    public ICommand DeleteSelectedEditCommand { get; }
 
     public bool HasDocument => _session != null;
     public bool CanEdit => !IsBusy && _session?.CanExport == true;
+    public bool CanSave => CanEdit && (Placements.Count > 0 || EditObjects.Any(o => o.IsModified));
     public bool CanInteract => !IsBusy;
+    public bool HasSelection => SelectedPlacement != null || SelectedEditObject != null;
     public int PageCount => _session?.PageCount ?? 0;
     public string FileName => _session == null ? "Ningún documento abierto" : Path.GetFileName(_session.SourcePath);
     public string WindowTitle => $"{(HasUnsavedChanges ? "* " : "")}{(HasDocument ? FileName + " · " : "")}PDF Editor";
     public string PageLabel => HasDocument ? $"Página {_pageIndex + 1} de {PageCount}" : "Sin páginas";
     public string SignatureCountLabel => $"{Signatures.Count} {(Signatures.Count == 1 ? "firma guardada" : "firmas guardadas")}";
     public bool IsLibraryEmpty => Signatures.Count == 0;
-    public string PlacementCountLabel => $"{Placements.Count} {(Placements.Count == 1 ? "firma colocada" : "firmas colocadas")}";
-    public string SelectionLabel => SelectedPlacement == null ? "Selecciona una firma para moverla o ajustar su tamaño" :
-        $"{SelectedPlacement.Asset.Name} · arrastra la esquina para redimensionar";
+    public string PlacementCountLabel
+    {
+        get
+        {
+            var edits = EditObjects.Count(o => !o.IsDeleted && o.Kind != EditObjectKind.Signature);
+            return $"{Placements.Count} firmas · {edits} ediciones";
+        }
+    }
+    public string SelectionLabel
+    {
+        get
+        {
+            if (SelectedEditObject != null)
+            {
+                return SelectedEditObject.IsTextKind
+                    ? $"Texto · modo {SelectedEditObject.ModeBadge}"
+                    : "Imagen seleccionada · puedes reemplazarla o eliminarla";
+            }
+            return SelectedPlacement == null
+                ? "Selecciona un objeto para editarlo"
+                : $"{SelectedPlacement.Asset.Name} · arrastra la esquina para redimensionar";
+        }
+    }
     public string DocumentHint => _session?.CanExport == false ? _session.RestrictionMessage :
-        "Arrastra una firma del panel a la página. También puedes hacer doble clic para colocarla.";
+        "Usa las herramientas de Editar para texto e imágenes, o la pestaña Firmas.";
     public double PageWidth => _session?.Pages[_pageIndex].WidthDip ?? 1;
     public double PageHeight => _session?.Pages[_pageIndex].HeightDip ?? 1;
     public BitmapSource? PageBitmap { get => _pageBitmap; private set => Set(ref _pageBitmap, value); }
@@ -133,9 +168,40 @@ public sealed class MainViewModel : ObservableObject, IDisposable
             if (!Set(ref _isBusy, value)) return;
             OnPropertyChanged(nameof(CanEdit));
             OnPropertyChanged(nameof(CanInteract));
+            OnPropertyChanged(nameof(CanSave));
             CommandManager.InvalidateRequerySuggested();
         }
     }
+    public EditorTool SelectedTool
+    {
+        get => _selectedTool;
+        set
+        {
+            if (!Set(ref _selectedTool, value)) return;
+            OnPropertyChanged(nameof(IsSelectTool));
+            OnPropertyChanged(nameof(IsTextTool));
+            OnPropertyChanged(nameof(IsImageTool));
+            OnPropertyChanged(nameof(IsSignatureTool));
+            if (value == EditorTool.Signature) LeftTab = 1;
+            CommandManager.InvalidateRequerySuggested();
+        }
+    }
+    public bool IsSelectTool => SelectedTool == EditorTool.Select;
+    public bool IsTextTool => SelectedTool == EditorTool.Text;
+    public bool IsImageTool => SelectedTool == EditorTool.Image;
+    public bool IsSignatureTool => SelectedTool == EditorTool.Signature;
+    public int LeftTab
+    {
+        get => _leftTab;
+        set
+        {
+            if (!Set(ref _leftTab, value)) return;
+            OnPropertyChanged(nameof(IsEditTab));
+            OnPropertyChanged(nameof(IsSignaturesTab));
+        }
+    }
+    public bool IsEditTab => LeftTab == 0;
+    public bool IsSignaturesTab => LeftTab == 1;
     public SignatureAsset? SelectedAsset
     {
         get => _selectedAsset;
@@ -149,11 +215,38 @@ public sealed class MainViewModel : ObservableObject, IDisposable
             if (ReferenceEquals(value, _selectedPlacement)) return;
             if (_selectedPlacement != null) _selectedPlacement.IsSelected = false;
             Set(ref _selectedPlacement, value);
-            if (value != null) value.IsSelected = true;
+            if (value != null)
+            {
+                value.IsSelected = true;
+                if (_selectedEditObject != null) { _selectedEditObject.IsSelected = false; _selectedEditObject = null; OnPropertyChanged(nameof(SelectedEditObject)); }
+            }
             OnPropertyChanged(nameof(SelectionLabel));
+            OnPropertyChanged(nameof(HasSelection));
             CommandManager.InvalidateRequerySuggested();
         }
     }
+    public PageEditObject? SelectedEditObject
+    {
+        get => _selectedEditObject;
+        set
+        {
+            if (ReferenceEquals(value, _selectedEditObject)) return;
+            if (_selectedEditObject != null) _selectedEditObject.IsSelected = false;
+            Set(ref _selectedEditObject, value);
+            if (value != null)
+            {
+                value.IsSelected = true;
+                if (_selectedPlacement != null) { _selectedPlacement.IsSelected = false; _selectedPlacement = null; OnPropertyChanged(nameof(SelectedPlacement)); }
+            }
+            OnPropertyChanged(nameof(SelectionLabel));
+            OnPropertyChanged(nameof(HasSelection));
+            OnPropertyChanged(nameof(ShowTextProperties));
+            OnPropertyChanged(nameof(ShowImageProperties));
+            CommandManager.InvalidateRequerySuggested();
+        }
+    }
+    public bool ShowTextProperties => SelectedEditObject?.IsTextKind == true;
+    public bool ShowImageProperties => SelectedEditObject?.IsImageKind == true;
 
     public void Initialize()
     {
@@ -198,17 +291,26 @@ public sealed class MainViewModel : ObservableObject, IDisposable
             candidate = null;
             _pageIndex = 0;
             SelectedPlacement = null;
+            SelectedEditObject = null;
             UnsubscribePlacements();
+            UnsubscribeEdits();
             Placements.Clear();
             VisiblePlacements.Clear();
+            EditObjects.Clear();
+            VisibleEditObjects.Clear();
             _undo.Clear();
             _redo.Clear();
             _savedState = "";
             HasUnsavedChanges = false;
             LastExportPath = null;
             PageBitmap = bitmap;
+            EnsureIndexedObjectsForPage(0);
+            RefreshVisibleEdits();
             NotifyDocument();
-            Status = _session.CanExport ? "PDF abierto. Coloca tus firmas sobre la página." : _session.RestrictionMessage;
+            var index = _session.ContentIndex;
+            Status = _session.CanExport
+                ? $"PDF abierto. {index.TextCount} textos · {index.ImageCount} imágenes detectados. Edición nativa o tapado según el contenido."
+                : _session.RestrictionMessage;
         }
         finally { candidate?.Dispose(); IsBusy = false; }
     }
@@ -222,13 +324,153 @@ public sealed class MainViewModel : ObservableObject, IDisposable
         {
             var bitmap = await _session.RenderAsync(index);
             SelectedPlacement = null;
+            SelectedEditObject = null;
             _pageIndex = index;
             PageBitmap = bitmap;
+            EnsureIndexedObjectsForPage(index);
             RefreshVisiblePlacements();
+            RefreshVisibleEdits();
             NotifyDocument();
-            Status = _session.CanExport ? "Página lista. Arrastra una firma para colocarla." : _session.RestrictionMessage;
+            Status = _session.CanExport ? "Página lista." : _session.RestrictionMessage;
         }
         finally { IsBusy = false; }
+    }
+
+    private void EnsureIndexedObjectsForPage(int pageIndex)
+    {
+        if (_session?.ContentIndex == null) return;
+        var page = _session.Pages[pageIndex];
+        foreach (var hit in _session.ContentIndex.GetText(pageIndex))
+        {
+            if (EditObjects.Any(o => o.SourceKey == hit.Key)) continue;
+            AddEditObject(new PageEditObject(Guid.NewGuid(), EditObjectKind.ExistingText, pageIndex,
+                page.WidthDip, page.HeightDip, hit.Bounds, text: hit.Text, fontSizeDip: hit.FontSizeDip,
+                textMode: hit.NativeCandidate ? TextEditMode.Native : TextEditMode.Tap, sourceKey: hit.Key),
+                trackUndo: false);
+        }
+        foreach (var hit in _session.ContentIndex.GetImages(pageIndex))
+        {
+            if (EditObjects.Any(o => o.SourceKey == hit.Key)) continue;
+            AddEditObject(new PageEditObject(Guid.NewGuid(), EditObjectKind.ExistingImage, pageIndex,
+                page.WidthDip, page.HeightDip, hit.Bounds, sourceKey: hit.Key), trackUndo: false);
+        }
+    }
+
+    public void HandlePageClick(Point point)
+    {
+        if (!CanEdit) return;
+        if (SelectedTool == EditorTool.Text)
+        {
+            PushUndo(Snapshot());
+            var width = Math.Min(280, PageWidth * .45) / PageWidth;
+            var height = Math.Min(36, PageHeight * .08) / PageHeight;
+            var bounds = new Rect(
+                Math.Clamp(point.X / PageWidth - width / 2, 0, 1 - width),
+                Math.Clamp(point.Y / PageHeight - height / 2, 0, 1 - height),
+                width, height);
+            var obj = new PageEditObject(Guid.NewGuid(), EditObjectKind.NewText, _pageIndex,
+                PageWidth, PageHeight, bounds, text: "Escribe aquí…", fontSizeDip: 16,
+                textMode: TextEditMode.Tap);
+            AddEditObject(obj);
+            SelectedEditObject = obj;
+            Status = "Texto añadido. Edítalo en el cuadro.";
+            return;
+        }
+        if (SelectedTool == EditorTool.Image)
+        {
+            var path = _dialogs.PickImage();
+            if (path == null) return;
+            TryAction(() => PlaceNewImage(path, point));
+            return;
+        }
+        if (SelectedTool == EditorTool.Select)
+        {
+            SelectedPlacement = null;
+            SelectedEditObject = null;
+        }
+    }
+
+    private void PlaceNewImage(string path, Point point)
+    {
+        PushUndo(Snapshot());
+        var bytes = File.ReadAllBytes(path);
+        using var stream = new MemoryStream(bytes);
+        var decoder = BitmapDecoder.Create(stream, BitmapCreateOptions.PreservePixelFormat,
+            BitmapCacheOption.OnLoad);
+        var frame = decoder.Frames[0];
+        var aspect = frame.PixelWidth / (double)Math.Max(1, frame.PixelHeight);
+        var widthDip = Math.Min(220, PageWidth * .35);
+        widthDip = Math.Min(widthDip, PageHeight * .4 * aspect);
+        var heightDip = widthDip / aspect;
+        var png = EncodePng(frame);
+        var bounds = new Rect(
+            Math.Clamp((point.X - widthDip / 2) / PageWidth, 0, 1 - widthDip / PageWidth),
+            Math.Clamp((point.Y - heightDip / 2) / PageHeight, 0, 1 - heightDip / PageHeight),
+            widthDip / PageWidth, heightDip / PageHeight);
+        var obj = new PageEditObject(Guid.NewGuid(), EditObjectKind.NewImage, _pageIndex,
+            PageWidth, PageHeight, bounds, pngBytes: png);
+        AddEditObject(obj);
+        SelectedEditObject = obj;
+        Status = "Imagen colocada.";
+    }
+
+    private static byte[] EncodePng(BitmapSource source)
+    {
+        var encoder = new PngBitmapEncoder();
+        encoder.Frames.Add(BitmapFrame.Create(source));
+        using var ms = new MemoryStream();
+        encoder.Save(ms);
+        return ms.ToArray();
+    }
+
+    private void ReplaceSelectedImage()
+    {
+        if (SelectedEditObject is not { IsImageKind: true } obj) return;
+        var path = _dialogs.PickImage();
+        if (path == null) return;
+        PushUndo(Snapshot());
+        using var stream = File.OpenRead(path);
+        var decoder = BitmapDecoder.Create(stream, BitmapCreateOptions.PreservePixelFormat,
+            BitmapCacheOption.OnLoad);
+        obj.PngBytes = EncodePng(decoder.Frames[0]);
+        if (obj.Kind == EditObjectKind.ExistingImage)
+            obj.TextMode = TextEditMode.Tap;
+        NotifyEdits();
+        Status = "Imagen reemplazada. Se exportará tapando el original si hace falta.";
+    }
+
+    private void DeleteSelectedEdit()
+    {
+        if (SelectedEditObject == null) return;
+        PushUndo(Snapshot());
+        var obj = SelectedEditObject;
+        SelectedEditObject = null;
+        if (obj.Kind is EditObjectKind.ExistingText or EditObjectKind.ExistingImage)
+        {
+            obj.IsDeleted = true;
+            VisibleEditObjects.Remove(obj);
+        }
+        else
+        {
+            obj.PropertyChanged -= EditChanged;
+            EditObjects.Remove(obj);
+            VisibleEditObjects.Remove(obj);
+        }
+        NotifyEdits();
+        Status = "Elemento eliminado de la edición.";
+    }
+
+    private void RemoveSelected()
+    {
+        if (SelectedEditObject != null) { DeleteSelectedEdit(); return; }
+        if (SelectedPlacement == null) return;
+        PushUndo(Snapshot());
+        var placement = SelectedPlacement;
+        SelectedPlacement = null;
+        placement.PropertyChanged -= PlacementChanged;
+        Placements.Remove(placement);
+        VisiblePlacements.Remove(placement);
+        NotifyPlacements();
     }
 
     private void AddDrawnSignature()
@@ -246,6 +488,11 @@ public sealed class MainViewModel : ObservableObject, IDisposable
     public void ImportImagePath(string path) => TryAction(() =>
     {
         if (IsBusy) return;
+        if (SelectedTool == EditorTool.Image && CanEdit && HasDocument)
+        {
+            PlaceNewImage(path, new Point(PageWidth / 2, PageHeight / 2));
+            return;
+        }
         var draft = _dialogs.ImportSignature(path);
         if (draft != null) AddAsset(draft);
     });
@@ -307,24 +554,26 @@ public sealed class MainViewModel : ObservableObject, IDisposable
         if (placement.PageIndex == _pageIndex) VisiblePlacements.Add(placement);
     }
 
-    public void BeginPlacementEdit() => _beforeEdit = Snapshot();
-    public void EndPlacementEdit()
+    private void AddEditObject(PageEditObject obj, bool trackUndo = true)
     {
-        if (_beforeEdit != null && !_beforeEdit.SequenceEqual(Snapshot())) PushUndo(_beforeEdit);
-        _beforeEdit = null;
-        NotifyPlacements();
+        obj.PropertyChanged += EditChanged;
+        EditObjects.Add(obj);
+        if (!obj.IsDeleted && obj.PageIndex == _pageIndex) VisibleEditObjects.Add(obj);
+        if (trackUndo) NotifyEdits();
     }
 
-    private void RemoveSelectedPlacement()
+    public void BeginPlacementEdit() => _beforeEdit = Snapshot();
+    public void BeginEditObjectEdit() => _beforeEdit = Snapshot();
+    public void EndPlacementEdit() => EndAnyEdit();
+    public void EndEditObjectEdit() => EndAnyEdit();
+    public void NotifyTextEdited() => NotifyEdits();
+
+    private void EndAnyEdit()
     {
-        if (SelectedPlacement == null) return;
-        PushUndo(Snapshot());
-        var placement = SelectedPlacement;
-        SelectedPlacement = null;
-        placement.PropertyChanged -= PlacementChanged;
-        Placements.Remove(placement);
-        VisiblePlacements.Remove(placement);
+        if (_beforeEdit != null && !SameSnapshot(_beforeEdit, Snapshot())) PushUndo(_beforeEdit);
+        _beforeEdit = null;
         NotifyPlacements();
+        NotifyEdits();
     }
 
     private void DuplicateSelectedPlacement()
@@ -358,7 +607,7 @@ public sealed class MainViewModel : ObservableObject, IDisposable
         Restore(state);
     }
 
-    private void PushUndo(PlacementState[] state)
+    private void PushUndo(DocumentEditSnapshot state)
     {
         _undo.Add(state);
         if (_undo.Count > 100) _undo.RemoveAt(0);
@@ -366,30 +615,74 @@ public sealed class MainViewModel : ObservableObject, IDisposable
         CommandManager.InvalidateRequerySuggested();
     }
 
-    private PlacementState[] Snapshot() => Placements.Select(p => p.Snapshot()).ToArray();
-    private void Restore(PlacementState[] state)
+    private DocumentEditSnapshot Snapshot() => new(
+        EditObjects.Select(o => o.Snapshot()).ToArray(),
+        Placements.Select(p => p.Snapshot()).ToArray());
+
+    private static bool SameSnapshot(DocumentEditSnapshot a, DocumentEditSnapshot b) =>
+        a.Placements.SequenceEqual(b.Placements) &&
+        a.Objects.Select(StateKey).SequenceEqual(b.Objects.Select(StateKey));
+
+    private static string StateKey(EditObjectState o) =>
+        string.Create(CultureInfo.InvariantCulture,
+            $"{o.Id}:{o.Kind}:{o.PageIndex}:{o.Bounds}:{o.Text}:{o.IsDeleted}:{o.TextMode}:{o.PngBytes?.Length ?? 0}");
+
+    private void Restore(DocumentEditSnapshot state)
     {
         SelectedPlacement = null;
+        SelectedEditObject = null;
         UnsubscribePlacements();
+        UnsubscribeEdits();
         Placements.Clear();
         VisiblePlacements.Clear();
-        foreach (var placement in state) AddPlacement(placement.ToPlacement());
+        EditObjects.Clear();
+        VisibleEditObjects.Clear();
+        foreach (var placement in state.Placements) AddPlacement(placement.ToPlacement());
+        foreach (var edit in state.Objects) AddEditObject(edit.ToObject(), trackUndo: false);
+        RefreshVisibleEdits();
         NotifyPlacements();
+        NotifyEdits();
     }
+
     private void UnsubscribePlacements()
     {
         foreach (var placement in Placements) placement.PropertyChanged -= PlacementChanged;
+    }
+    private void UnsubscribeEdits()
+    {
+        foreach (var edit in EditObjects) edit.PropertyChanged -= EditChanged;
     }
     private void PlacementChanged(object? sender, PropertyChangedEventArgs e)
     {
         if (e.PropertyName == nameof(SignaturePlacement.Bounds)) NotifyPlacements();
     }
-    private string StateKey() => string.Join(";", Placements.Select(p =>
-        string.Create(CultureInfo.InvariantCulture, $"{p.Id}:{p.PageIndex}:{p.Bounds.X:R},{p.Bounds.Y:R},{p.Bounds.Width:R},{p.Bounds.Height:R}")));
+    private void EditChanged(object? sender, PropertyChangedEventArgs e)
+    {
+        if (e.PropertyName is nameof(PageEditObject.Bounds) or nameof(PageEditObject.Text)
+            or nameof(PageEditObject.IsDeleted) or nameof(PageEditObject.PngBytes)
+            or nameof(PageEditObject.FontSizeDip) or nameof(PageEditObject.ColorArgb))
+            NotifyEdits();
+    }
+
+    private string StateKey() => string.Join("|",
+        string.Join(";", Placements.Select(p =>
+            string.Create(CultureInfo.InvariantCulture, $"{p.Id}:{p.PageIndex}:{p.Bounds.X:R},{p.Bounds.Y:R},{p.Bounds.Width:R},{p.Bounds.Height:R}"))),
+        string.Join(";", EditObjects.Select(o => StateKey(o.Snapshot()))));
+
     private void NotifyPlacements()
     {
         HasUnsavedChanges = StateKey() != _savedState;
         OnPropertyChanged(nameof(PlacementCountLabel));
+        OnPropertyChanged(nameof(CanSave));
+        CommandManager.InvalidateRequerySuggested();
+    }
+
+    private void NotifyEdits()
+    {
+        HasUnsavedChanges = StateKey() != _savedState;
+        OnPropertyChanged(nameof(PlacementCountLabel));
+        OnPropertyChanged(nameof(SelectionLabel));
+        OnPropertyChanged(nameof(CanSave));
         CommandManager.InvalidateRequerySuggested();
     }
 
@@ -397,21 +690,25 @@ public sealed class MainViewModel : ObservableObject, IDisposable
     {
         if (_session == null) return;
         var destination = _dialogs.PickDestination(Path.GetFileNameWithoutExtension(_session.SourcePath) +
-            (digitally ? "_firmado_digital.pdf" : "_firmado.pdf"));
+            (digitally ? "_firmado_digital.pdf" : "_editado.pdf"));
         if (destination == null) return;
         if (string.Equals(Path.GetFullPath(destination), _session.SourcePath, StringComparison.OrdinalIgnoreCase))
             throw new InvalidOperationException("Elige un nombre diferente al PDF abierto para guardar la copia.");
         using var signing = digitally ? _dialogs.ChooseCertificate(SelectedPlacement?.Asset.Name) : null;
         if (digitally && signing == null) return;
         IsBusy = true;
-        Status = digitally ? "Aplicando firma digital y guardando PDF…" : "Incorporando firmas y guardando PDF…";
+        Status = digitally ? "Aplicando firma digital y guardando PDF…" : "Aplicando ediciones y guardando PDF…";
         try
         {
-            await _exporter.ExportAsync(_session, Snapshot(), destination, signing, SelectedPlacement?.Id);
+            var edits = EditObjects.Where(o => o.IsModified).Select(o => o.Snapshot()).ToArray();
+            var result = await _exporter.ExportAsync(_session, edits, Snapshot().Placements, destination,
+                signing, SelectedPlacement?.Id);
             _savedState = StateKey();
             HasUnsavedChanges = false;
             LastExportPath = destination;
-            Status = $"{(digitally ? "PDF firmado digitalmente" : "Copia guardada")}: {Path.GetFileName(destination)}";
+            Status = result.UsedTapFallback
+                ? result.Message
+                : $"{(digitally ? "PDF firmado digitalmente" : "Copia guardada")}: {Path.GetFileName(destination)}";
         }
         finally { IsBusy = false; }
     }
@@ -421,6 +718,14 @@ public sealed class MainViewModel : ObservableObject, IDisposable
         VisiblePlacements.Clear();
         foreach (var placement in Placements.Where(p => p.PageIndex == _pageIndex)) VisiblePlacements.Add(placement);
     }
+
+    private void RefreshVisibleEdits()
+    {
+        VisibleEditObjects.Clear();
+        foreach (var edit in EditObjects.Where(o => o.PageIndex == _pageIndex && !o.IsDeleted))
+            VisibleEditObjects.Add(edit);
+    }
+
     private void NotifyLibrary()
     {
         OnPropertyChanged(nameof(SignatureCountLabel));
@@ -428,14 +733,14 @@ public sealed class MainViewModel : ObservableObject, IDisposable
     }
     private void NotifyDocument()
     {
-        foreach (var property in new[] { nameof(HasDocument), nameof(CanEdit), nameof(FileName), nameof(WindowTitle),
-            nameof(PageLabel), nameof(PageCount), nameof(PageWidth), nameof(PageHeight), nameof(DocumentHint),
-            nameof(PlacementCountLabel) }) OnPropertyChanged(property);
+        foreach (var property in new[] { nameof(HasDocument), nameof(CanEdit), nameof(CanSave), nameof(FileName),
+            nameof(WindowTitle), nameof(PageLabel), nameof(PageCount), nameof(PageWidth), nameof(PageHeight),
+            nameof(DocumentHint), nameof(PlacementCountLabel) }) OnPropertyChanged(property);
         CommandManager.InvalidateRequerySuggested();
     }
 
-    public bool ConfirmDiscard() => !HasUnsavedChanges || _dialogs.Confirm("Firmas sin guardar",
-        "Hay cambios en las firmas del documento que todavía no has guardado. ¿Quieres descartarlos?", "Descartar cambios");
+    public bool ConfirmDiscard() => !HasUnsavedChanges || _dialogs.Confirm("Cambios sin guardar",
+        "Hay cambios en el documento que todavía no has guardado. ¿Quieres descartarlos?", "Descartar cambios");
 
     public void HandleError(Exception exception)
     {
@@ -447,5 +752,10 @@ public sealed class MainViewModel : ObservableObject, IDisposable
         try { action(); }
         catch (Exception ex) { HandleError(ex); }
     }
-    public void Dispose() { UnsubscribePlacements(); _session?.Dispose(); }
+    public void Dispose()
+    {
+        UnsubscribePlacements();
+        UnsubscribeEdits();
+        _session?.Dispose();
+    }
 }

@@ -29,13 +29,13 @@
                     </Border>
                     <StackPanel VerticalAlignment="Center">
                         <TextBlock Text="PDF Editor" FontSize="21" FontWeight="SemiBold" />
-                        <TextBlock Text="Tu firma. Tu documento." Style="{StaticResource MutedText}" Margin="0,3,0,0" />
+                        <TextBlock Text="Edita, firma y guarda tus PDFs." Style="{StaticResource MutedText}" Margin="0,3,0,0" />
                     </StackPanel>
                 </StackPanel>
                 <StackPanel Grid.Column="2" Orientation="Horizontal" VerticalAlignment="Center">
                     <Button Content="Abrir PDF" Command="{Binding OpenPdfCommand}" Margin="0,0,10,0" Padding="20,11" ToolTip="Abrir documento · Ctrl+O" />
                     <Border Width="1" Background="{StaticResource StrokeBrush}" Margin="6,5,16,5" />
-                    <Button Content="Guardar copia" Command="{Binding SaveCopyCommand}" Margin="0,0,10,0" Padding="20,11" ToolTip="Incorporar firmas visuales · Ctrl+S" />
+                    <Button Content="Guardar copia" Command="{Binding SaveCopyCommand}" Margin="0,0,10,0" Padding="20,11" ToolTip="Guardar ediciones y firmas · Ctrl+S" />
                     <Button Content="Firmar digitalmente" Style="{StaticResource PrimaryButton}" Command="{Binding SignDigitallyCommand}"
                             Padding="20,11" ToolTip="Firmar con un certificado · Ctrl+Mayús+S" />
                 </StackPanel>
@@ -45,52 +45,78 @@
         <Grid Grid.Row="1">
             <Grid.ColumnDefinitions><ColumnDefinition Width="270" MinWidth="245" MaxWidth="380" /><ColumnDefinition Width="5" /><ColumnDefinition Width="*" /></Grid.ColumnDefinitions>
             <Border Background="{StaticResource SurfaceBrush}" BorderBrush="{StaticResource StrokeBrush}" BorderThickness="0,0,1,0">
-                <Grid Margin="20,23,18,18">
-                    <Grid.RowDefinitions><RowDefinition Height="Auto" /><RowDefinition Height="Auto" /><RowDefinition Height="*" />
-                        <RowDefinition Height="Auto" /><RowDefinition Height="Auto" /></Grid.RowDefinitions>
-                    <StackPanel>
-                        <TextBlock Text="TU BIBLIOTECA" Style="{StaticResource SectionLabel}" />
-                        <TextBlock Text="Mis firmas" FontSize="22" FontWeight="SemiBold" Margin="0,7,0,5" />
-                        <TextBlock Text="{Binding SignatureCountLabel}" Style="{StaticResource MutedText}" />
-                    </StackPanel>
-                    <Grid Grid.Row="1" Margin="0,20,0,20">
+                <Grid Margin="16,18,14,14">
+                    <Grid.RowDefinitions>
+                        <RowDefinition Height="Auto" />
+                        <RowDefinition Height="*" />
+                    </Grid.RowDefinitions>
+                    <Grid Margin="0,0,0,14">
                         <Grid.ColumnDefinitions><ColumnDefinition Width="*" /><ColumnDefinition Width="8" /><ColumnDefinition Width="*" /></Grid.ColumnDefinitions>
-                        <Button Content="+ Crear" Command="{Binding DrawSignatureCommand}" ToolTip="Dibujar una nueva firma" Padding="9,9" />
-                        <Button Grid.Column="2" Content="Importar" Command="{Binding ImportSignatureCommand}" ToolTip="Importar PNG o JPG" Padding="9,9" />
+                        <Button Content="Editar" Command="{Binding SetLeftTabCommand}" CommandParameter="0" Padding="8,8" />
+                        <Button Grid.Column="2" Content="Firmas" Command="{Binding SetLeftTabCommand}" CommandParameter="1" Padding="8,8" />
                     </Grid>
-                    <Grid Grid.Row="2">
-                        <ListBox x:Name="SignatureList" ItemsSource="{Binding Signatures}" SelectedItem="{Binding SelectedAsset}"
-                                 IsEnabled="{Binding CanInteract}" PreviewMouseLeftButtonDown="Library_MouseDown" PreviewMouseMove="Library_MouseMove"
-                                 MouseDoubleClick="Library_DoubleClick" Padding="0">
-                            <ListBox.ItemTemplate>
-                                <DataTemplate>
-                                    <StackPanel>
-                                        <Border Background="#FAFAFD" CornerRadius="5" Height="84" Padding="12" Margin="0,0,0,11">
-                                            <Image Source="{Binding Image}" Stretch="Uniform" RenderOptions.BitmapScalingMode="HighQuality" />
-                                        </Border>
-                                        <TextBlock Text="{Binding Name}" FontWeight="SemiBold" TextTrimming="CharacterEllipsis" />
-                                        <TextBlock Text="{Binding KindLabel}" Style="{StaticResource MutedText}" Margin="0,4,0,0" />
-                                    </StackPanel>
-                                </DataTemplate>
-                            </ListBox.ItemTemplate>
-                        </ListBox>
-                        <StackPanel VerticalAlignment="Center" Visibility="{Binding IsLibraryEmpty, Converter={StaticResource BoolVisibility}}" Margin="6,0">
-                            <TextBlock Text="&#xE70F;" FontFamily="Segoe MDL2 Assets" Foreground="{StaticResource AccentBrush}" FontSize="30" HorizontalAlignment="Center" />
-                            <TextBlock Text="Tu firma, siempre a mano" FontWeight="SemiBold" TextAlignment="Center" Margin="0,18,0,9" />
-                            <TextBlock Text="Dibújala o importa una imagen.&#x0a;Después podrás reutilizarla aquí." Style="{StaticResource MutedText}" TextAlignment="Center" TextWrapping="Wrap" LineHeight="20" />
+
+                    <ScrollViewer Grid.Row="1" VerticalScrollBarVisibility="Auto"
+                                  Visibility="{Binding IsEditTab, Converter={StaticResource BoolVisibility}}">
+                        <StackPanel>
+                            <TextBlock Text="HERRAMIENTAS" Style="{StaticResource SectionLabel}" />
+                            <TextBlock Text="Editar PDF" FontSize="20" FontWeight="SemiBold" Margin="0,7,0,12" />
+                            <Button Content="Seleccionar" Command="{Binding SetToolCommand}" CommandParameter="Select" Margin="0,0,0,8" Padding="10,9" />
+                            <Button Content="Texto" Command="{Binding SetToolCommand}" CommandParameter="Text" Margin="0,0,0,8" Padding="10,9" />
+                            <Button Content="Imagen" Command="{Binding SetToolCommand}" CommandParameter="Image" Margin="0,0,0,8" Padding="10,9" />
+                            <Button Content="Firma" Command="{Binding SetToolCommand}" CommandParameter="Signature" Margin="0,0,0,14" Padding="10,9" />
+                            <TextBlock Text="Clic en la página con Texto o Imagen para insertar. Selecciona un texto detectado para editarlo (Nativo o Tapar)."
+                                       Style="{StaticResource MutedText}" TextWrapping="Wrap" LineHeight="19" />
                         </StackPanel>
-                    </Grid>
-                    <StackPanel Grid.Row="3" Margin="0,14,0,0">
-                        <Button Content="Colocar firma seleccionada" Command="{Binding PlaceSignatureCommand}" Padding="8,10" />
-                        <Grid Margin="0,9,0,0">
+                    </ScrollViewer>
+
+                    <Grid Grid.Row="1" Visibility="{Binding IsSignaturesTab, Converter={StaticResource BoolVisibility}}">
+                        <Grid.RowDefinitions><RowDefinition Height="Auto" /><RowDefinition Height="Auto" /><RowDefinition Height="*" />
+                            <RowDefinition Height="Auto" /><RowDefinition Height="Auto" /></Grid.RowDefinitions>
+                        <StackPanel>
+                            <TextBlock Text="TU BIBLIOTECA" Style="{StaticResource SectionLabel}" />
+                            <TextBlock Text="Mis firmas" FontSize="20" FontWeight="SemiBold" Margin="0,7,0,5" />
+                            <TextBlock Text="{Binding SignatureCountLabel}" Style="{StaticResource MutedText}" />
+                        </StackPanel>
+                        <Grid Grid.Row="1" Margin="0,16,0,16">
                             <Grid.ColumnDefinitions><ColumnDefinition Width="*" /><ColumnDefinition Width="8" /><ColumnDefinition Width="*" /></Grid.ColumnDefinitions>
-                            <Button Content="Renombrar" Command="{Binding RenameSignatureCommand}" Padding="7,7" FontSize="11" />
-                            <Button Grid.Column="2" Content="Eliminar" Command="{Binding DeleteSignatureCommand}" Padding="7,7" FontSize="11" />
+                            <Button Content="+ Crear" Command="{Binding DrawSignatureCommand}" ToolTip="Dibujar una nueva firma" Padding="9,9" />
+                            <Button Grid.Column="2" Content="Importar" Command="{Binding ImportSignatureCommand}" ToolTip="Importar PNG o JPG" Padding="9,9" />
                         </Grid>
-                    </StackPanel>
-                    <Border Grid.Row="4" BorderBrush="{StaticResource StrokeBrush}" BorderThickness="0,1,0,0" Margin="0,20,0,0" Padding="0,15,0,0">
-                        <TextBlock Text="Arrastra una firma al PDF o haz doble clic para colocarla." Style="{StaticResource MutedText}" TextWrapping="Wrap" LineHeight="19" />
-                    </Border>
+                        <Grid Grid.Row="2">
+                            <ListBox x:Name="SignatureList" ItemsSource="{Binding Signatures}" SelectedItem="{Binding SelectedAsset}"
+                                     IsEnabled="{Binding CanInteract}" PreviewMouseLeftButtonDown="Library_MouseDown" PreviewMouseMove="Library_MouseMove"
+                                     MouseDoubleClick="Library_DoubleClick" Padding="0">
+                                <ListBox.ItemTemplate>
+                                    <DataTemplate>
+                                        <StackPanel>
+                                            <Border Background="#FAFAFD" CornerRadius="5" Height="84" Padding="12" Margin="0,0,0,11">
+                                                <Image Source="{Binding Image}" Stretch="Uniform" RenderOptions.BitmapScalingMode="HighQuality" />
+                                            </Border>
+                                            <TextBlock Text="{Binding Name}" FontWeight="SemiBold" TextTrimming="CharacterEllipsis" />
+                                            <TextBlock Text="{Binding KindLabel}" Style="{StaticResource MutedText}" Margin="0,4,0,0" />
+                                        </StackPanel>
+                                    </DataTemplate>
+                                </ListBox.ItemTemplate>
+                            </ListBox>
+                            <StackPanel VerticalAlignment="Center" Visibility="{Binding IsLibraryEmpty, Converter={StaticResource BoolVisibility}}" Margin="6,0">
+                                <TextBlock Text="&#xE70F;" FontFamily="Segoe MDL2 Assets" Foreground="{StaticResource AccentBrush}" FontSize="30" HorizontalAlignment="Center" />
+                                <TextBlock Text="Tu firma, siempre a mano" FontWeight="SemiBold" TextAlignment="Center" Margin="0,18,0,9" />
+                                <TextBlock Text="Dibújala o importa una imagen.&#x0a;Después podrás reutilizarla aquí." Style="{StaticResource MutedText}" TextAlignment="Center" TextWrapping="Wrap" LineHeight="20" />
+                            </StackPanel>
+                        </Grid>
+                        <StackPanel Grid.Row="3" Margin="0,14,0,0">
+                            <Button Content="Colocar firma seleccionada" Command="{Binding PlaceSignatureCommand}" Padding="8,10" />
+                            <Grid Margin="0,9,0,0">
+                                <Grid.ColumnDefinitions><ColumnDefinition Width="*" /><ColumnDefinition Width="8" /><ColumnDefinition Width="*" /></Grid.ColumnDefinitions>
+                                <Button Content="Renombrar" Command="{Binding RenameSignatureCommand}" Padding="7,7" FontSize="11" />
+                                <Button Grid.Column="2" Content="Eliminar" Command="{Binding DeleteSignatureCommand}" Padding="7,7" FontSize="11" />
+                            </Grid>
+                        </StackPanel>
+                        <Border Grid.Row="4" BorderBrush="{StaticResource StrokeBrush}" BorderThickness="0,1,0,0" Margin="0,16,0,0" Padding="0,12,0,0">
+                            <TextBlock Text="Arrastra una firma al PDF o haz doble clic para colocarla." Style="{StaticResource MutedText}" TextWrapping="Wrap" LineHeight="19" />
+                        </Border>
+                    </Grid>
                 </Grid>
             </Border>
             <GridSplitter Grid.Column="1" Width="5" HorizontalAlignment="Stretch" Background="{StaticResource BackgroundBrush}" />
@@ -130,6 +156,22 @@
                                   AllowDrop="True" DragOver="Page_DragOver" Drop="Page_Drop" MouseLeftButtonDown="Page_MouseDown">
                                 <Grid.LayoutTransform><ScaleTransform ScaleX="{Binding Zoom}" ScaleY="{Binding Zoom}" /></Grid.LayoutTransform>
                                 <Image Source="{Binding PageBitmap}" Stretch="Fill" IsHitTestVisible="False" RenderOptions.BitmapScalingMode="HighQuality" />
+                                <ItemsControl ItemsSource="{Binding VisibleEditObjects}" IsEnabled="{Binding CanEdit}"
+                                              Width="{Binding PageWidth}" Height="{Binding PageHeight}">
+                                    <ItemsControl.ItemsPanel><ItemsPanelTemplate><Canvas /></ItemsPanelTemplate></ItemsControl.ItemsPanel>
+                                    <ItemsControl.ItemContainerStyle>
+                                        <Style TargetType="ContentPresenter">
+                                            <Setter Property="Canvas.Left" Value="{Binding CanvasLeft}" />
+                                            <Setter Property="Canvas.Top" Value="{Binding CanvasTop}" />
+                                        </Style>
+                                    </ItemsControl.ItemContainerStyle>
+                                    <ItemsControl.ItemTemplate>
+                                        <DataTemplate>
+                                            <controls:EditObjectControl Selected="EditObject_Selected" EditStarted="EditObject_EditStarted"
+                                                                        EditCompleted="EditObject_EditCompleted" TextEdited="EditObject_TextEdited" />
+                                        </DataTemplate>
+                                    </ItemsControl.ItemTemplate>
+                                </ItemsControl>
                                 <ItemsControl ItemsSource="{Binding VisiblePlacements}" IsEnabled="{Binding CanEdit}"
                                               Width="{Binding PageWidth}" Height="{Binding PageHeight}">
                                     <ItemsControl.ItemsPanel><ItemsPanelTemplate><Canvas /></ItemsPanelTemplate></ItemsControl.ItemsPanel>
@@ -155,14 +197,14 @@
                             <TextBlock Text="&#xEA90;" FontFamily="Segoe MDL2 Assets" FontSize="44" Foreground="{StaticResource AccentBrush}"
                                        HorizontalAlignment="Center" VerticalAlignment="Center" />
                         </Border>
-                        <TextBlock Text="Tu próximo PDF, listo para firmar" FontSize="25" FontWeight="SemiBold" TextAlignment="Center" Margin="0,25,0,12" />
-                        <TextBlock Text="Abre un documento y añade tu firma donde la necesites." Style="{StaticResource MutedText}" TextAlignment="Center" />
+                        <TextBlock Text="Tu próximo PDF, listo para editar" FontSize="25" FontWeight="SemiBold" TextAlignment="Center" Margin="0,25,0,12" />
+                        <TextBlock Text="Abre un documento para editar texto e imágenes o firmarlo." Style="{StaticResource MutedText}" TextAlignment="Center" />
                         <TextBlock Text="También puedes arrastrar un archivo PDF a esta ventana." Style="{StaticResource MutedText}" TextAlignment="Center" Margin="0,6,0,25" />
                         <Button Content="Abrir un PDF" Command="{Binding OpenPdfCommand}" Style="{StaticResource PrimaryButton}" HorizontalAlignment="Center" Padding="30,13" />
                         <StackPanel Orientation="Horizontal" HorizontalAlignment="Center" Margin="0,35,0,0">
-                            <TextBlock Text="01  Abre el documento" Style="{StaticResource MutedText}" Margin="0,0,24,0" />
-                            <TextBlock Text="02  Añade tu firma" Style="{StaticResource MutedText}" Margin="0,0,24,0" />
-                            <TextBlock Text="03  Guarda el PDF" Style="{StaticResource MutedText}" />
+                            <TextBlock Text="01  Abre" Style="{StaticResource MutedText}" Margin="0,0,24,0" />
+                            <TextBlock Text="02  Edita o firma" Style="{StaticResource MutedText}" Margin="0,0,24,0" />
+                            <TextBlock Text="03  Guarda" Style="{StaticResource MutedText}" />
                         </StackPanel>
                     </StackPanel>
                     <Border Background="#C910141E" Visibility="{Binding IsBusy, Converter={StaticResource BoolVisibility}}">
@@ -176,10 +218,16 @@
                 </Grid>
                 <Border Grid.Row="3" BorderBrush="{StaticResource StrokeBrush}" BorderThickness="0,1,0,0" Background="#151B27">
                     <Grid Margin="20,0">
-                        <TextBlock Text="{Binding SelectionLabel}" Style="{StaticResource MutedText}" FontSize="11" VerticalAlignment="Center" Margin="0,0,220,0" TextTrimming="CharacterEllipsis" />
+                        <TextBlock Text="{Binding SelectionLabel}" Style="{StaticResource MutedText}" FontSize="11" VerticalAlignment="Center" Margin="0,0,320,0" TextTrimming="CharacterEllipsis" />
                         <StackPanel Orientation="Horizontal" HorizontalAlignment="Right" VerticalAlignment="Center">
+                            <StackPanel Orientation="Horizontal" Visibility="{Binding ShowTextProperties, Converter={StaticResource BoolVisibility}}" Margin="0,0,10,0">
+                                <TextBlock Text="Tamaño" Style="{StaticResource MutedText}" FontSize="11" VerticalAlignment="Center" Margin="0,0,6,0" />
+                                <TextBox Width="44" Text="{Binding SelectedEditObject.FontSizeDip, UpdateSourceTrigger=PropertyChanged}" FontSize="11" Padding="4,3" VerticalAlignment="Center" />
+                            </StackPanel>
+                            <Button Content="Reemplazar imagen" Command="{Binding ReplaceSelectedImageCommand}" FontSize="11" Padding="10,5" Margin="0,0,7,0"
+                                    Visibility="{Binding ShowImageProperties, Converter={StaticResource BoolVisibility}}" />
                             <Button Content="Duplicar" Command="{Binding DuplicatePlacementCommand}" FontSize="11" Padding="10,5" Margin="0,0,7,0" />
-                            <Button Content="Quitar del PDF" Command="{Binding RemovePlacementCommand}" FontSize="11" Padding="10,5" />
+                            <Button Content="Quitar" Command="{Binding RemovePlacementCommand}" FontSize="11" Padding="10,5" />
                         </StackPanel>
                     </Grid>
                 </Border>

@@ -78,8 +78,10 @@ public partial class MainWindow : DarkWindow
     }
     private void Page_MouseDown(object sender, MouseButtonEventArgs e)
     {
-        if (FindParent<SignaturePlacementControl>(e.OriginalSource as DependencyObject) == null)
-            ViewModel.SelectedPlacement = null;
+        if (FindParent<SignaturePlacementControl>(e.OriginalSource as DependencyObject) != null) return;
+        if (FindParent<EditObjectControl>(e.OriginalSource as DependencyObject) != null) return;
+        ViewModel.HandlePageClick(e.GetPosition(PageSurface));
+        e.Handled = true;
     }
     private void Placement_Selected(object? sender, EventArgs e)
     {
@@ -88,6 +90,14 @@ public partial class MainWindow : DarkWindow
     }
     private void Placement_EditStarted(object? sender, EventArgs e) => ViewModel.BeginPlacementEdit();
     private void Placement_EditCompleted(object? sender, EventArgs e) => ViewModel.EndPlacementEdit();
+    private void EditObject_Selected(object? sender, EventArgs e)
+    {
+        if (ViewModel.CanEdit && sender is EditObjectControl { DataContext: PageEditObject obj })
+            ViewModel.SelectedEditObject = obj;
+    }
+    private void EditObject_EditStarted(object? sender, EventArgs e) => ViewModel.BeginEditObjectEdit();
+    private void EditObject_EditCompleted(object? sender, EventArgs e) => ViewModel.EndEditObjectEdit();
+    private void EditObject_TextEdited(object? sender, EventArgs e) => ViewModel.NotifyTextEdited();
 
     private void Window_DragOver(object sender, DragEventArgs e)
     {
