@@ -1,0 +1,6 @@
+<Solution>
+  <Project Path="PdfEditor/PdfEditor.csproj" />
+  <Folder Name="/tests/">
+    <Project Path="tests/PdfEditor.Checks/PdfEditor.Checks.csproj" />
+  </Folder>
+</Solution>

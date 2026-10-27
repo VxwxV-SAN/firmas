@@ -5,3 +5,4 @@ artifacts/
 *.user
 *.pfx
 *.p12
+.superpowers/

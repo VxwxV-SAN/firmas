@@ -2,9 +2,9 @@
 setlocal EnableExtensions DisableDelayedExpansion
 
 set "ROOT=%~dp0"
-set "PROJECT=%ROOT%FirmasPDF\FirmasPDF.csproj"
+set "PROJECT=%ROOT%PdfEditor\PdfEditor.csproj"
 set "OUTPUT=%ROOT%artifacts\run"
-set "APP=%OUTPUT%\FirmasPDF.exe"
+set "APP=%OUTPUT%\PdfEditor.exe"
 
 if not exist "%PROJECT%" (
     echo ERROR: No se encuentra el proyecto "%PROJECT%".
@@ -17,8 +17,8 @@ if errorlevel 1 (
     goto :fail
 )
 
-echo Cerrando las instancias anteriores de Firmas PDF...
-powershell.exe -NoLogo -NoProfile -NonInteractive -Command "$ErrorActionPreference = 'Stop'; $instances = @(Get-Process -Name 'FirmasPDF' -ErrorAction SilentlyContinue); foreach ($instance in $instances) { if (-not $instance.HasExited) { Stop-Process -Id $instance.Id -Force; if (-not $instance.WaitForExit(10000)) { throw 'No se pudo cerrar la instancia anterior.' } } }"
+echo Cerrando las instancias anteriores de PDF Editor...
+powershell.exe -NoLogo -NoProfile -NonInteractive -Command "$ErrorActionPreference = 'Stop'; $instances = @(Get-Process -Name 'PdfEditor' -ErrorAction SilentlyContinue); foreach ($instance in $instances) { if (-not $instance.HasExited) { Stop-Process -Id $instance.Id -Force; if (-not $instance.WaitForExit(10000)) { throw 'No se pudo cerrar la instancia anterior.' } } }"
 if errorlevel 1 goto :fail
 
 echo Compilando el codigo actual...
@@ -30,7 +30,7 @@ if not exist "%APP%" (
     goto :fail
 )
 
-echo Abriendo Firmas PDF...
+echo Abriendo PDF Editor...
 start "" "%APP%" %*
 if errorlevel 1 goto :fail
 exit /b 0
