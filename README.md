@@ -1,4 +1,4 @@
-# Firmas PDF
+# PDF Editor
 
 Aplicación de escritorio en **C# / WPF / .NET 10** con tema oscuro e interfaz en español. Permite leer documentos PDF, dibujar o importar firmas, colocarlas sobre las páginas y guardar una copia con firmas visuales o con firma digital mediante certificado.
 
@@ -7,20 +7,20 @@ Aplicación de escritorio en **C# / WPF / .NET 10** con tema oscuro e interfaz e
 La publicación para Windows de 64 bits está en:
 
 ```text
-artifacts\FirmasPDF-win-x64\FirmasPDF.exe
+artifacts\PdfEditor-win-x64\PdfEditor.exe
 ```
 
-Haz doble clic en `FirmasPDF.exe`. Esta publicación incluye .NET; conserva la carpeta completa con sus archivos al copiarla a otro equipo. Está destinada a Windows 10 de 64 bits (22H2) y Windows 11.
+Haz doble clic en `PdfEditor.exe`. Esta publicación incluye .NET; conserva la carpeta completa con sus archivos al copiarla a otro equipo. Está destinada a Windows 10 de 64 bits (22H2) y Windows 11.
 
 También puedes abrir un documento desde la línea de comandos:
 
 ```powershell
-& ".\artifacts\FirmasPDF-win-x64\FirmasPDF.exe" "C:\Documentos\contrato.pdf"
+& ".\artifacts\PdfEditor-win-x64\PdfEditor.exe" "C:\Documentos\contrato.pdf"
 ```
 
 ### Ejecutar con el código actual
 
-Haz doble clic en **`run.bat`**, situado en la raíz del proyecto. El lanzador cierra las instancias anteriores de Firmas PDF, compila el código actual en `artifacts\run\` y abre la aplicación actualizada. Requiere el SDK de .NET 10.
+Haz doble clic en **`run.bat`**, situado en la raíz del proyecto. El lanzador cierra las instancias anteriores de PDF Editor, compila el código actual en `artifacts\run\` y abre la aplicación actualizada. Requiere el SDK de .NET 10.
 
 También puedes pasarle el PDF que quieres abrir:
 
@@ -56,7 +56,7 @@ Los PDF que ya contienen una firma digital se abren en **modo lectura**. Los PDF
 Las firmas se guardan automáticamente en:
 
 ```text
-%LocalAppData%\FirmasPDF\Signatures\
+%LocalAppData%\PdfEditor\Signatures\
 ```
 
 Cada firma tiene un PNG y un JSON con su nombre, fecha y origen. Puedes renombrarla o eliminarla desde el panel. Al eliminarla de la biblioteca, las instancias que ya has colocado en el documento actual siguen disponibles durante esa sesión.
@@ -81,20 +81,20 @@ Requiere Windows y el **SDK de .NET 10**. La primera restauración descarga PDFs
 Desde la raíz del proyecto:
 
 ```powershell
-dotnet build "FirmasPDF.slnx" -c Release
-dotnet run --project "FirmasPDF\FirmasPDF.csproj"
+dotnet build "PdfEditor.slnx" -c Release
+dotnet run --project "PdfEditor\PdfEditor.csproj"
 ```
 
 Para publicar la aplicación con .NET incluido:
 
 ```powershell
-dotnet publish "FirmasPDF\FirmasPDF.csproj" -c Release -p:PublishProfile=Windows
+dotnet publish "PdfEditor\PdfEditor.csproj" -c Release -p:PublishProfile=Windows
 ```
 
 ### Comprobaciones de integración
 
 ```powershell
-dotnet run --project "tests\FirmasPDF.Checks\FirmasPDF.Checks.csproj" -c Release
+dotnet run --project "tests\PdfEditor.Checks\PdfEditor.Checks.csproj" -c Release
 ```
 
 El ejecutable de comprobaciones genera documentos de prueba y capturas en `artifacts\checks\`. Verifica:
@@ -111,7 +111,7 @@ Las pruebas crean su propio certificado temporal, lo retiran del almacén person
 ### Estructura
 
 ```text
-FirmasPDF/
+PdfEditor/
   Controls/           Controles para mover y redimensionar firmas
   Infrastructure/     Notificaciones, comandos y convertidores WPF
   Models/             Firmas, colocaciones y solicitudes de firma digital
@@ -121,7 +121,7 @@ FirmasPDF/
   Views/              Diálogos de dibujo, importación y certificados
   MainWindow.xaml     Ventana principal
 tests/
-  FirmasPDF.Checks/    Comprobaciones de integración sin servicios externos
+  PdfEditor.Checks/    Comprobaciones de integración sin servicios externos
 ```
 
 ## Dependencias

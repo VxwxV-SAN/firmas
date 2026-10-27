@@ -3,8 +3,8 @@ Add-Type -AssemblyName System.Drawing
 $ErrorActionPreference = 'Stop'
 
 $root = Split-Path -Parent $PSScriptRoot
-$iconPath = Join-Path $root 'FirmasPDF\Resources\app.ico'
-$pngSourcePath = Join-Path $root 'FirmasPDF\Resources\app.png'
+$iconPath = Join-Path $root 'PdfEditor\Resources\app.ico'
+$pngSourcePath = Join-Path $root 'PdfEditor\Resources\app.png'
 New-Item -ItemType Directory -Force -Path (Split-Path -Parent $iconPath) | Out-Null
 
 # Tamaños habituales en iconos de Windows: 16, 24, 32, 48, 64, 128, 256.
